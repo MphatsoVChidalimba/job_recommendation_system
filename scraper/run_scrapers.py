@@ -1,7 +1,7 @@
 import psycopg2
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 import asyncio
+import os
 from scrape_jobsearchmalawi import scrape_jobsearchmalawi
 from scrape_ntchito import scrape_ntchito
 from scrape_careers import scrape_careersmw
@@ -10,22 +10,14 @@ from scrape_careers import scrape_careersmw
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Database connection configuration
-DB_CONFIG = {
-    "dbname": "job_recommendation",
-    "user": "postgres",
-    "password": "6742",
-    "host": "localhost",
-    "port": "5432"
-}
+# Database connection from environment
+DB_URL = os.getenv("DB_URL")
 
-# Initialize database and create table
 def init_db():
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
         
-        # Create table if it doesn't exist
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id SERIAL PRIMARY KEY,
@@ -40,7 +32,6 @@ def init_db():
             )
         """)
         
-        # Check if unique_url constraint exists
         cursor.execute("""
             SELECT constraint_name 
             FROM information_schema.table_constraints 
@@ -49,7 +40,6 @@ def init_db():
         constraint_exists = cursor.fetchone()
         
         if not constraint_exists:
-            # Check for duplicates before adding constraint
             cursor.execute("""
                 SELECT url, COUNT(*) 
                 FROM jobs 
@@ -58,9 +48,7 @@ def init_db():
             """)
             duplicates = cursor.fetchall()
             if duplicates:
-                logger.warning(f"Cannot add unique_url constraint due to {len(duplicates)} duplicate URLs. Please deduplicate the table.")
-                for url, count in duplicates:
-                    logger.warning(f"Duplicate URL: {url} ({count} occurrences)")
+                logger.warning(f"Cannot add unique_url constraint due to {len(duplicates)} duplicate URLs.")
             else:
                 cursor.execute("ALTER TABLE jobs ADD CONSTRAINT unique_url UNIQUE (url)")
                 logger.info("Added unique_url constraint to jobs table")
@@ -76,8 +64,7 @@ def init_db():
 async def run_all_scrapers():
     logger.info("Starting all scrapers")
     jobs = []
-    
-    # Run scrapers sequentially
+
     try:
         jobs.extend(await scrape_jobsearchmalawi())
         logger.info("Completed jobsearchmalawi.com scraper")
@@ -101,21 +88,7 @@ async def run_all_scrapers():
 
 async def main():
     init_db()
-    # Run scrapers immediately for testing (comment out for production)
     await run_all_scrapers()
-    
-    # Set up scheduler
-    scheduler = AsyncIOScheduler(timezone="Africa/Blantyre")
-    scheduler.add_job(run_all_scrapers, "cron", hour=7, minute=0)
-    scheduler.start()
-    logger.info("Scheduler started for daily scraping at 7 AM CAT")
-    
-    # Keep the event loop running
-    try:
-        await asyncio.Event().wait()
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
-        logger.info("Scheduler shut down")
 
 if __name__ == "__main__":
     asyncio.run(main())
