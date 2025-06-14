@@ -1,5 +1,11 @@
-requests
-beautifulsoup4
 psycopg2-binary
-sqlalchemy
+beautifulsoup4
+requests
+lxml
+undetected-chromedriver
+selenium
+APScheduler
+aiohttp
+pandas
+python-dotenv
 
